@@ -353,74 +353,6 @@ void Simulator::initialize() {
             preloadTimer.Stop();
         }
 
-        if (renderObjects) {
-            // Load house mesh and use it to populate vertex/colour buffers
-            std::string scanId{"1LXtFkjw3qL"};
-            auto meshFile = datasetPath + "/" + scanId + "/house_segmentations/" + scanId + ".ply";
-            std::ifstream ss(meshFile, std::ios::binary);
-            if (ss.fail()) {
-                throw std::invalid_argument("MatterSim: could not open house mesh at: " + meshFile);
-            }
-
-            tinyply::PlyFile file;
-            file.parse_header(ss);
-
-            std::shared_ptr<tinyply::PlyData> vertices, colours, indices, face_objectids;
-
-            vertices = file.request_properties_from_element("vertex", { "x", "y", "z" });
-
-            colours = file.request_properties_from_element("vertex", { "red", "green", "blue" });
-
-            // Providing a list size hint (the last argument) is a 2x
-            // performance improvement. FIXME check that none of the
-            // house meshes break loading with this hint.
-            indices = file.request_properties_from_element("face", { "vertex_indices" }, 3);
-
-            face_objectids = file.request_properties_from_element("face", { "segment_id" });
-
-            file.read(ss);
-
-            int32_t num_objects = 0;
-            std::map<int32_t, int32_t> objectid_mapping;
-
-            // Object IDs in the ply file do not correspond to object
-            // IDs in the house file.  However, the order they appear
-            // does seem to match up (FIXME verify) so we build up a
-            // mapping from ply_objectid to object_id which we then
-            // encode as RGB to be rendered in the object segmentation
-            // image.
-            auto face_objectids_ptr = (int32_t *) face_objectids->buffer.get();
-            auto indices_ptr = (int32_t *) indices->buffer.get();
-            auto colours_ptr = (uint8_t *) colours->buffer.get();
-            for (int32_t face = 0;face < face_objectids->count;face++) {
-                auto ply_objectid = face_objectids_ptr[face];
-                if (objectid_mapping.count(ply_objectid) == 0) {
-                    objectid_mapping[ply_objectid] = num_objects;
-                    num_objects++;
-                }
-                uint8_t red = objectid_mapping[ply_objectid] >> 16;
-                uint8_t green = (objectid_mapping[ply_objectid] >> 8) & 0xFF;
-                uint8_t blue = objectid_mapping[ply_objectid] & 0xFF;
-
-                for (int32_t idx = 0;idx < 3;idx++) {
-                    int32_t vertex_index = indices_ptr[face * 3 + idx];
-                    colours_ptr[vertex_index * 3] = red;
-                    colours_ptr[vertex_index * 3 + 1] = green;
-                    colours_ptr[vertex_index * 3 + 2] = blue;
-                }
-            }
-
-            glGenBuffers(1, &objects_vertices);
-            glBindBuffer(GL_ARRAY_BUFFER, objects_vertices);
-            glBufferData(GL_ARRAY_BUFFER, vertices->buffer.size_bytes(), vertices->buffer.get(), GL_STATIC_DRAW);
-            glGenBuffers(1, &objects_colours);
-            glBindBuffer(GL_ARRAY_BUFFER, objects_colours);
-            glBufferData(GL_ARRAY_BUFFER, colours->buffer.size_bytes(), colours->buffer.get(), GL_STATIC_DRAW);
-            glGenBuffers(1, &objects_indices);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, objects_indices);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->buffer.size_bytes(), indices->buffer.get(), GL_STATIC_DRAW);
-            num_triangles = indices->count;
-        }
     }
     initialized = true;
 }
@@ -515,6 +447,73 @@ void Simulator::newEpisode(const std::vector<std::string>& scanId,
             0.0, 0.0, 0.0
         };
         state->location = std::make_shared<Viewpoint>(v);
+        if (renderObjects) {
+            // Load house mesh and use it to populate vertex/colour buffers
+            auto meshFile = datasetPath + "/" + state->scanId + "/house_segmentations/" + state->scanId + ".ply";
+            std::ifstream ss(meshFile, std::ios::binary);
+            if (ss.fail()) {
+                throw std::invalid_argument("MatterSim: could not open house mesh at: " + meshFile);
+            }
+
+            tinyply::PlyFile file;
+            file.parse_header(ss);
+
+            std::shared_ptr<tinyply::PlyData> vertices, colours, indices, face_objectids;
+
+            vertices = file.request_properties_from_element("vertex", { "x", "y", "z" });
+
+            colours = file.request_properties_from_element("vertex", { "red", "green", "blue" });
+
+            // Providing a list size hint (the last argument) is a 2x
+            // performance improvement. FIXME check that none of the
+            // house meshes break loading with this hint.
+            indices = file.request_properties_from_element("face", { "vertex_indices" }, 3);
+
+            face_objectids = file.request_properties_from_element("face", { "segment_id" });
+
+            file.read(ss);
+
+            int32_t num_objects = 0;
+            std::map<int32_t, int32_t> objectid_mapping;
+
+            // Object IDs in the ply file do not correspond to object
+            // IDs in the house file.  However, the order they appear
+            // does seem to match up (FIXME verify) so we build up a
+            // mapping from ply_objectid to object_id which we then
+            // encode as RGB to be rendered in the object segmentation
+            // image.
+            auto face_objectids_ptr = (int32_t *) face_objectids->buffer.get();
+            auto indices_ptr = (int32_t *) indices->buffer.get();
+            auto colours_ptr = (uint8_t *) colours->buffer.get();
+            for (int32_t face = 0;face < face_objectids->count;face++) {
+                auto ply_objectid = face_objectids_ptr[face];
+                if (objectid_mapping.count(ply_objectid) == 0) {
+                    objectid_mapping[ply_objectid] = num_objects;
+                    num_objects++;
+                }
+                uint8_t red = objectid_mapping[ply_objectid] >> 16;
+                uint8_t green = (objectid_mapping[ply_objectid] >> 8) & 0xFF;
+                uint8_t blue = objectid_mapping[ply_objectid] & 0xFF;
+
+                for (int32_t idx = 0;idx < 3;idx++) {
+                    int32_t vertex_index = indices_ptr[face * 3 + idx];
+                    colours_ptr[vertex_index * 3] = red;
+                    colours_ptr[vertex_index * 3 + 1] = green;
+                    colours_ptr[vertex_index * 3 + 2] = blue;
+                }
+            }
+
+            glGenBuffers(1, &state->objects_vertices);
+            glBindBuffer(GL_ARRAY_BUFFER, state->objects_vertices);
+            glBufferData(GL_ARRAY_BUFFER, vertices->buffer.size_bytes(), vertices->buffer.get(), GL_STATIC_DRAW);
+            glGenBuffers(1, &state->objects_colours);
+            glBindBuffer(GL_ARRAY_BUFFER, state->objects_colours);
+            glBufferData(GL_ARRAY_BUFFER, colours->buffer.size_bytes(), colours->buffer.get(), GL_STATIC_DRAW);
+            glGenBuffers(1, &state->objects_indices);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->objects_indices);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->buffer.size_bytes(), indices->buffer.get(), GL_STATIC_DRAW);
+            state->num_triangles = indices->count;
+        }
     }
     populateNavigable();
     if (renderingEnabled) {
@@ -607,14 +606,14 @@ void Simulator::renderScene() {
             M = View * Model;
             glUniformMatrix4fv(ModelViewMat, 1, GL_FALSE, glm::value_ptr(M));
             glEnableClientState(GL_COLOR_ARRAY);
-            glBindBuffer(GL_ARRAY_BUFFER, objects_vertices);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, objects_indices);
+            glBindBuffer(GL_ARRAY_BUFFER, state->objects_vertices);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->objects_indices);
             glEnableVertexAttribArray(vertex);
             glVertexAttribPointer(vertex, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
-            glBindBuffer(GL_ARRAY_BUFFER, objects_colours);
+            glBindBuffer(GL_ARRAY_BUFFER, state->objects_colours);
             glColorPointer(3, GL_UNSIGNED_BYTE, 3, 0);
             glEnable(GL_DEPTH_TEST);
-            glDrawElements(GL_TRIANGLES, num_triangles * 3, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, state->num_triangles * 3, GL_UNSIGNED_INT, 0);
             glDisable(GL_DEPTH_TEST);
             glDisableClientState(GL_COLOR_ARRAY);
             renderTimer.Stop();

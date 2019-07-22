@@ -89,6 +89,14 @@ namespace mattersim {
         //! viewpoints you can move to. Index 0 is always to remain at the current viewpoint.
         //! The remaining viewpoints are sorted by their angular distance from the centre of the image.
         std::vector<ViewpointPtr> navigableLocations;
+        //! OpenGL array buffer for house mesh vertices
+        GLuint objects_vertices;
+        //! OpenGL array buffer for house mesh vertex colours
+        GLuint objects_colours;
+        //! OpenGL array buffer for house mesh face indices
+        GLuint objects_indices;
+        //! Number of triangles in the house mesh
+        size_t num_triangles;
     };
 
     typedef std::shared_ptr<SimState> SimStatePtr;
@@ -288,10 +296,6 @@ namespace mattersim {
         GLint isObjects;
         GLuint vao_cube;
         GLuint vbo_cube_vertices;
-        GLuint objects_vertices;
-        GLuint objects_colours;
-        GLuint objects_indices;
-        size_t num_triangles;
         GLuint glProgram;
         GLuint glShaderV;
         GLuint glShaderF;
