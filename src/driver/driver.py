@@ -12,12 +12,14 @@ HFOV = VFOV*WIDTH/HEIGHT
 TEXT_COLOR = [230, 40, 40]
 
 cv2.namedWindow('Python RGB')
-cv2.namedWindow('Python Depth')
+#cv2.namedWindow('Python Depth')
+cv2.namedWindow('Python objects')
 
 sim = MatterSim.Simulator()
 sim.setCameraResolution(WIDTH, HEIGHT)
 sim.setCameraVFOV(VFOV)
 sim.setDepthEnabled(False) # Turn on depth only after running ./scripts/depth_to_skybox.py (see README.md)
+sim.setObjectsEnabled(True)
 sim.initialize()
 #sim.newEpisode(['2t7WUuJeko7'], ['1e6b606b44df4a6086c0f97e826d4d15'], [0], [0])
 #sim.newEpisode(['1LXtFkjw3qL'], ['0b22fa63d0f54a529c525afbf2e8bb25'], [0], [0])
@@ -51,8 +53,10 @@ while True:
             fontScale, TEXT_COLOR, thickness=3)
     cv2.imshow('Python RGB', rgb)
 
-    depth = np.array(state.depth, copy=False)
-    cv2.imshow('Python Depth', depth)
+    #depth = np.array(state.depth, copy=False)
+    #cv2.imshow('Python Depth', depth)
+    segmentation = np.array(state.object_segmentation, copy=False)
+    cv2.imshow('Python objects', segmentation)
     k = cv2.waitKey(1)
     if k == -1:
         continue

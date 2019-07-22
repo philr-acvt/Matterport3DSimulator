@@ -6,10 +6,14 @@ varying vec4 camCoord;
 uniform samplerCube cubemap;
 const vec3 camlook = vec3( 0.0, 0.0, -1.0 );
 uniform bool isDepth;
+uniform bool isObjects;
 
 void main (void) {
   vec4 color = textureCube(cubemap, texCoord);
-  if (isDepth) {
+
+  if (isObjects) {
+    gl_FragColor = gl_Color;
+  } else if (isDepth) {
     float scale = dot(camCoord.xyz, camlook) / length(camCoord.xyz);
     gl_FragColor = color*scale;
   } else {
