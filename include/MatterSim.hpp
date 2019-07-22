@@ -74,6 +74,8 @@ namespace mattersim {
         cv::Mat rgb;
         //! Depth image taken from the agent's current viewpoint
         cv::Mat depth;
+        //! Object segmentation image taken from the agent's current viewpoint
+        cv::Mat object_segmentation;
         //! Agent's current 3D location
         ViewpointPtr location;
         //! Agent's current camera heading in radians
@@ -155,6 +157,11 @@ namespace mattersim {
          * Enable or disable rendering of depth images. Default is false (disabled).
          */
         void setDepthEnabled(bool value);
+
+        /**
+         * Enable or disable rendering of object segmentation images. Default is false (disabled).
+         */
+        void setObjectsEnabled(bool value);
 
         /**
          * Set the number of environments in the batch. Default is 1.
@@ -249,6 +256,7 @@ namespace mattersim {
         bool discretizeViews;
         bool preloadImages;
         bool renderDepth;
+        bool renderObjects;
         int width;
         int height;
         int randomSeed;
@@ -267,8 +275,13 @@ namespace mattersim {
         GLint ModelViewMat;
         GLint vertex;
         GLint isDepth;
+        GLint isObjects;
         GLuint vao_cube;
         GLuint vbo_cube_vertices;
+        GLuint objects_vertices;
+        GLuint objects_colours;
+        GLuint objects_indices;
+        size_t num_triangles;
         GLuint glProgram;
         GLuint glShaderV;
         GLuint glShaderF;

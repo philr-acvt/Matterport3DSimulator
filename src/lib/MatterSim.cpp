@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 
+#include "tinyply.h"
+
 #include "MatterSim.hpp"
 #include "Benchmark.hpp"
 
@@ -68,6 +70,7 @@ Simulator::Simulator() :width(320),
                         discretizeViews(false),
                         preloadImages(false),
                         renderDepth(false),
+                        renderObjects(false),
                         batchSize(1),
                         cacheSize(200),
                         randomSeed(1) {
@@ -132,6 +135,12 @@ void Simulator::setDepthEnabled(bool value) {
     } 
 }
 
+void Simulator::setObjectsEnabled(bool value) {
+    if (!initialized) {
+        renderObjects = value;
+    }
+}
+
 void Simulator::setBatchSize(unsigned int size) {
     if (!initialized) {
         batchSize = size;
@@ -155,6 +164,9 @@ void Simulator::initialize() {
         states.push_back(std::make_shared<SimState>());
         states.back()->rgb = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
         states.back()->depth = cv::Mat(height, width, CV_16UC1, cv::Scalar(0));
+        if (renderObjects) {
+            states.back()->object_segmentation = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
+        }
     }
     if (renderingEnabled) {
 #ifdef OSMESA_RENDERING
@@ -243,6 +255,17 @@ void Simulator::initialize() {
         glDrawBuffers(1, DrawBuffers); // "1" is the size of DrawBuffers
         assertOpenGLError("glDrawBuffers");
 
+        if (renderObjects) {
+            // Generate at depth texture for rendering the objects mesh.
+            GLuint depthTexture;
+            glGenTextures(1, &depthTexture);
+            glBindTexture(GL_TEXTURE_2D, depthTexture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+        }
+
         // Always check that the framebuffer is ok
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if(status == GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT) {
@@ -298,6 +321,9 @@ void Simulator::initialize() {
         // centre) back to perpendicular distance from camera plane.
         isDepth = glGetUniformLocation(glProgram, "isDepth");
 
+        // If isObjects, the fragment shader renders vertex color
+        isObjects = glGetUniformLocation(glProgram, "isObjects");
+
         // these won't change
         Projection = glm::perspective((float)vfov, (float)width / (float)height, 0.1f, 100.0f);
         glUniformMatrix4fv(ProjMat, 1, GL_FALSE, glm::value_ptr(Projection));
@@ -318,6 +344,75 @@ void Simulator::initialize() {
             auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, 
                               renderDepth, randomSeed, cacheSize);
             preloadTimer.Stop();
+        }
+
+        if (renderObjects) {
+            // Load house mesh and use it to populate vertex/colour buffers
+            std::string scanId{"1LXtFkjw3qL"};
+            auto meshFile = datasetPath + "/" + scanId + "/house_segmentations/" + scanId + ".ply";
+            std::ifstream ss(meshFile, std::ios::binary);
+            if (ss.fail()) {
+                throw std::invalid_argument("MatterSim: could not open house mesh at: " + meshFile);
+            }
+
+            tinyply::PlyFile file;
+            file.parse_header(ss);
+
+            std::shared_ptr<tinyply::PlyData> vertices, colours, indices, face_objectids;
+
+            vertices = file.request_properties_from_element("vertex", { "x", "y", "z" });
+
+            colours = file.request_properties_from_element("vertex", { "red", "green", "blue" });
+
+            // Providing a list size hint (the last argument) is a 2x
+            // performance improvement. FIXME check that none of the
+            // house meshes break loading with this hint.
+            indices = file.request_properties_from_element("face", { "vertex_indices" }, 3);
+
+            face_objectids = file.request_properties_from_element("face", { "segment_id" });
+
+            file.read(ss);
+
+            int32_t num_objects = 0;
+            std::map<int32_t, int32_t> objectid_mapping;
+
+            // Object IDs in the ply file do not correspond to object
+            // IDs in the house file.  However, the order they appear
+            // does seem to match up (FIXME verify) so we build up a
+            // mapping from ply_objectid to object_id which we then
+            // encode as RGB to be rendered in the object segmentation
+            // image.
+            auto face_objectids_ptr = (int32_t *) face_objectids->buffer.get();
+            auto indices_ptr = (int32_t *) indices->buffer.get();
+            auto colours_ptr = (uint8_t *) colours->buffer.get();
+            for (int32_t face = 0;face < face_objectids->count;face++) {
+                auto ply_objectid = face_objectids_ptr[face];
+                if (objectid_mapping.count(ply_objectid) == 0) {
+                    objectid_mapping[ply_objectid] = num_objects;
+                    num_objects++;
+                }
+                uint8_t red = objectid_mapping[ply_objectid] >> 16;
+                uint8_t green = (objectid_mapping[ply_objectid] >> 8) & 0xFF;
+                uint8_t blue = objectid_mapping[ply_objectid] & 0xFF;
+
+                for (int32_t idx = 0;idx < 3;idx++) {
+                    int32_t vertex_index = indices_ptr[face * 3 + idx];
+                    colours_ptr[vertex_index * 3] = red;
+                    colours_ptr[vertex_index * 3 + 1] = green;
+                    colours_ptr[vertex_index * 3 + 2] = blue;
+                }
+            }
+
+            glGenBuffers(1, &objects_vertices);
+            glBindBuffer(GL_ARRAY_BUFFER, objects_vertices);
+            glBufferData(GL_ARRAY_BUFFER, vertices->buffer.size_bytes(), vertices->buffer.get(), GL_STATIC_DRAW);
+            glGenBuffers(1, &objects_colours);
+            glBindBuffer(GL_ARRAY_BUFFER, objects_colours);
+            glBufferData(GL_ARRAY_BUFFER, colours->buffer.size_bytes(), colours->buffer.get(), GL_STATIC_DRAW);
+            glGenBuffers(1, &objects_indices);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, objects_indices);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->buffer.size_bytes(), indices->buffer.get(), GL_STATIC_DRAW);
+            num_triangles = indices->count;
         }
     }
     initialized = true;
@@ -458,8 +553,12 @@ void Simulator::renderScene() {
         glm::mat4 M = View * Model;
         glUniformMatrix4fv(ModelViewMat, 1, GL_FALSE, glm::value_ptr(M));
         glUniform1i(isDepth, false);
+        glUniform1i(isObjects, false);
         glViewport(0, 0, width, height);
         glBindTexture(GL_TEXTURE_CUBE_MAP, texIds.first);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_vertices);
+        glEnableVertexAttribArray(vertex);
+        glVertexAttribPointer(vertex, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glDrawArrays(GL_TRIANGLES, 0, 36);
         renderTimer.Stop();
         gpuReadTimer.Start();
@@ -487,6 +586,42 @@ void Simulator::renderScene() {
             glReadPixels(0, 0, img.cols, img.rows, GL_RED, GL_UNSIGNED_SHORT, img.data);
             gpuReadTimer.Stop();
             assertOpenGLError("render Depth");
+        }
+
+        if (renderObjects) {
+            renderTimer.Start();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glUniform1i(isObjects, true);
+
+            Model = glm::translate(glm::mat4(1.0f), -navGraph.cameraPosition(state->scanId,state->location->ix));
+            RotateX = glm::rotate(glm::mat4(1.0f), -(float)M_PI / 2.0f - (float)state->elevation, glm::vec3(1.0f, 0.0f, 0.0f));
+            // Rotate camera for heading, positive heading will turn right.
+            View = glm::rotate(RotateX, (float)state->heading, glm::vec3(0.0f, 0.0f, 1.0f));
+            M = View * Model;
+            glUniformMatrix4fv(ModelViewMat, 1, GL_FALSE, glm::value_ptr(M));
+            glEnableClientState(GL_COLOR_ARRAY);
+            glBindBuffer(GL_ARRAY_BUFFER, objects_vertices);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, objects_indices);
+            glEnableVertexAttribArray(vertex);
+            glVertexAttribPointer(vertex, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
+            glBindBuffer(GL_ARRAY_BUFFER, objects_colours);
+            glColorPointer(3, GL_UNSIGNED_BYTE, 3, 0);
+            glEnable(GL_DEPTH_TEST);
+            glDrawElements(GL_TRIANGLES, num_triangles * 3, GL_UNSIGNED_INT, 0);
+            glDisable(GL_DEPTH_TEST);
+            glDisableClientState(GL_COLOR_ARRAY);
+            renderTimer.Stop();
+
+            gpuReadTimer.Start();
+            cv::Mat img = state->object_segmentation;
+            //use fast 4-byte alignment (default anyway) if possible
+            glPixelStorei(GL_PACK_ALIGNMENT, (img.step & 3) ? 1 : 4);
+            //set length of one complete row in destination data (doesn't need to equal img.cols)
+            glPixelStorei(GL_PACK_ROW_LENGTH, img.step/img.elemSize());
+            glReadPixels(0, 0, img.cols, img.rows, GL_BGR, GL_UNSIGNED_BYTE, img.data);
+            cv::flip(img, img, 0);
+            gpuReadTimer.Stop();
+            assertOpenGLError("render objects");
         }
     }
 }
@@ -589,3 +724,6 @@ std::string Simulator::timingInfo() {
     return oss.str();
 }
 }
+
+#define TINYPLY_IMPLEMENTATION
+#include "tinyply.h"

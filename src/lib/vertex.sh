@@ -11,5 +11,6 @@ void main() {
   camCoord = ModelViewMat * vec4(vertex, 1.0);
   gl_Position = ProjMat * camCoord;
   texCoord = vertex;
+  gl_FrontColor = gl_Color;
 }
 )""
