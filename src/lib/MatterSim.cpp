@@ -596,7 +596,11 @@ void Simulator::renderScene() {
             RotateX = glm::rotate(glm::mat4(1.0f), -(float)M_PI / 2.0f - (float)state->elevation, glm::vec3(1.0f, 0.0f, 0.0f));
             // Rotate camera for heading, positive heading will turn right.
             View = glm::rotate(RotateX, (float)state->heading, glm::vec3(0.0f, 0.0f, 1.0f));
-            M = View * Model;
+            // We flip the vertical axis so the scene is rendered
+            // upside down. Then later glReadPixels will flip it for
+            // us when it reads the frame buffer bottom-up into a
+            // cv:Mat which is interpreted top-down.
+            M = glm::scale(glm::mat4(1.0f),glm::vec3(1,-1,1)) * View * Model;
             glUniformMatrix4fv(ModelViewMat, 1, GL_FALSE, glm::value_ptr(M));
             glEnableClientState(GL_COLOR_ARRAY);
             glBindBuffer(GL_ARRAY_BUFFER, state->objects_vertices);
@@ -618,7 +622,6 @@ void Simulator::renderScene() {
             //set length of one complete row in destination data (doesn't need to equal img.cols)
             glPixelStorei(GL_PACK_ROW_LENGTH, img.step/img.elemSize());
             glReadPixels(0, 0, img.cols, img.rows, GL_BGR, GL_UNSIGNED_BYTE, img.data);
-            cv::flip(img, img, 0);
             gpuReadTimer.Stop();
             assertOpenGLError("render objects");
         }
