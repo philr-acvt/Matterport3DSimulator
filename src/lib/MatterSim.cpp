@@ -263,7 +263,7 @@ void Simulator::initialize() {
         assertOpenGLError("glDrawBuffers");
 
         if (renderObjects) {
-            // Generate at depth texture for rendering the objects mesh.
+            // Generate a depth texture for rendering the objects mesh.
             GLuint depthTexture;
             glGenTextures(1, &depthTexture);
             glBindTexture(GL_TEXTURE_2D, depthTexture);
