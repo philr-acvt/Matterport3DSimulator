@@ -265,6 +265,14 @@ void Simulator::initialize() {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
             glShadeModel(GL_FLAT);
+
+            // Generate array buffers for object meshes
+            for (unsigned int i=0; i<batchSize; ++i) {
+                auto state = states.at(i);
+                glGenBuffers(1, &state->objects_vertices);
+                glGenBuffers(1, &state->objects_colours);
+                glGenBuffers(1, &state->objects_indices);
+            }
         }
 
         // Always check that the framebuffer is ok
@@ -497,13 +505,10 @@ void Simulator::newEpisode(const std::vector<std::string>& scanId,
                 }
             }
 
-            glGenBuffers(1, &state->objects_vertices);
             glBindBuffer(GL_ARRAY_BUFFER, state->objects_vertices);
             glBufferData(GL_ARRAY_BUFFER, vertices->buffer.size_bytes(), vertices->buffer.get(), GL_STATIC_DRAW);
-            glGenBuffers(1, &state->objects_colours);
             glBindBuffer(GL_ARRAY_BUFFER, state->objects_colours);
             glBufferData(GL_ARRAY_BUFFER, colours->buffer.size_bytes(), colours->buffer.get(), GL_STATIC_DRAW);
-            glGenBuffers(1, &state->objects_indices);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->objects_indices);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->buffer.size_bytes(), indices->buffer.get(), GL_STATIC_DRAW);
             state->num_triangles = indices->count;
