@@ -76,6 +76,8 @@ namespace mattersim {
         cv::Mat depth;
         //! Object segmentation image taken from the agent's current viewpoint
         cv::Mat object_segmentation;
+        //! Object bounding boxes in current view
+        std::map<int, std::vector<int>> object_bounds;
         //! Agent's current 3D location
         ViewpointPtr location;
         //! Agent's current camera heading in radians

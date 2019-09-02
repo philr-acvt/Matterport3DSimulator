@@ -629,6 +629,25 @@ void Simulator::renderScene() {
             glPixelStorei(GL_PACK_ROW_LENGTH, img.step/img.elemSize());
             glReadPixels(0, 0, img.cols, img.rows, GL_BGR, GL_UNSIGNED_BYTE, img.data);
             gpuReadTimer.Stop();
+            state->object_bounds.clear();
+            auto row = img.ptr(0);
+            for (auto y = 0;y < img.rows;y++) {
+                for (auto x = 0;x < img.cols;x++) {
+                    int objid = (*row) + (*(row + 1) << 8) + (*(row + 2) << 16);
+                    if (state->object_bounds.count(objid) == 0) {
+                        // left, top, right, bottom, pixels
+                        state->object_bounds[objid] = {x, y, x, y, 1};
+                    } else {
+                        auto &bounds = state->object_bounds[objid];
+                        bounds[0] = std::min(x, bounds[0]);
+                        bounds[1] = std::min(y, bounds[1]);
+                        bounds[2] = std::max(x, bounds[2]);
+                        bounds[3] = std::max(y, bounds[3]);
+                        bounds[4] += 1;
+                    }
+                    row += 3;
+                }
+            }
             assertOpenGLError("render objects");
         }
     }

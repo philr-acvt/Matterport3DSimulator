@@ -57,6 +57,10 @@ while True:
     #cv2.imshow('Python Depth', depth)
     segmentation = np.array(state.object_segmentation, copy=False)
     cv2.imshow('Python objects', segmentation)
+
+#    print(state.object_bounds)
+    obounds = {k: dict(zip(['left', 'top', 'right', 'bottom', 'pixels'], v)) for k, v in state.object_bounds.items()}
+
     k = cv2.waitKey(1)
     if k == -1:
         continue
