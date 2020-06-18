@@ -81,6 +81,7 @@ PYBIND11_MODULE(MatterSim, m) {
         .def("setPreloadingEnabled", &Simulator::setPreloadingEnabled)
         .def("setDepthEnabled", &Simulator::setDepthEnabled)
         .def("setObjectsEnabled", &Simulator::setObjectsEnabled)
+        .def("setSkyboxOffsetEnabled", &Simulator::setSkyboxOffsetEnabled)
         .def("setBatchSize", &Simulator::setBatchSize)
         .def("setCacheSize", &Simulator::setCacheSize)
         .def("setSeed", &Simulator::setSeed)

@@ -181,6 +181,11 @@ namespace mattersim {
         void setObjectsEnabled(bool value);
 
         /**
+         * Enable or disable rotation to match skybox orientation. Used to render object segmentation skyboxes from mesh.
+         */
+        void setSkyboxOffsetEnabled(bool value);
+
+        /**
          * Set the number of environments in the batch. Default is 1.
          */
         void setBatchSize(unsigned int size);
@@ -275,6 +280,7 @@ namespace mattersim {
         bool preloadImages;
         bool renderDepth;
         bool renderObjects;
+        bool skyboxOffset;
         int width;
         int height;
         int randomSeed;

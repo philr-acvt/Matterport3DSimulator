@@ -148,6 +148,12 @@ void Simulator::setObjectsEnabled(bool value) {
     }
 }
 
+void Simulator::setSkyboxOffsetEnabled(bool value) {
+    if (!initialized) {
+        skyboxOffset = value;
+    }
+}
+
 void Simulator::setBatchSize(unsigned int size) {
     if (!initialized) {
         batchSize = size;
@@ -446,6 +452,7 @@ void Simulator::newEpisode(const std::vector<std::string>& scanId,
     for (unsigned int i=0; i<states.size(); ++i) {
         auto state = states.at(i);
         state->step = 0;
+        auto preloaded_mesh = (state->scanId == scanId.at(i));
         state->scanId = scanId.at(i);
         unsigned int ix = navGraph.index(state->scanId, viewpointId.at(i));
         glm::vec3 pos = navGraph.cameraPosition(state->scanId, ix);
@@ -456,7 +463,7 @@ void Simulator::newEpisode(const std::vector<std::string>& scanId,
             0.0, 0.0, 0.0
         };
         state->location = std::make_shared<Viewpoint>(v);
-        if (renderObjects) {
+        if (renderObjects && !preloaded_mesh) {
             // Load house mesh and use it to populate vertex/colour buffers
             auto meshFile = datasetPath + "/" + state->scanId + "/house_segmentations/" + state->scanId + ".ply";
             std::ifstream ss(meshFile, std::ios::binary);
@@ -557,7 +564,11 @@ void Simulator::renderScene() {
         std::pair<GLuint, GLuint> texIds = navGraph.cubemapTextures(state->scanId, state->location->ix);
         glClear(GL_COLOR_BUFFER_BIT);
         // Scale and move the cubemap model into position
-        Model = navGraph.cameraRotation(state->scanId,state->location->ix) * Scale;
+        if (skyboxOffset) {
+            Model = glm::mat4(1.0f) * Scale;
+        } else {
+            Model = navGraph.cameraRotation(state->scanId,state->location->ix) * Scale;
+        }
         // Opengl camera looking down -z axis. Rotate around x by -90deg (now looking down +y). Add positive elevation to look up.
         RotateX = glm::rotate(glm::mat4(1.0f), -(float)M_PI / 2.0f + (float)state->elevation, glm::vec3(1.0f, 0.0f, 0.0f));
         // Rotate camera around z for heading, positive heading will turn right.
@@ -605,7 +616,11 @@ void Simulator::renderScene() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glUniform1i(isObjects, true);
 
-            Model = glm::translate(glm::mat4(1.0f), -navGraph.cameraPosition(state->scanId,state->location->ix));
+            if (skyboxOffset) {
+                Model = glm::translate(glm::inverse(navGraph.cameraRotation(state->scanId, state->location->ix)), -navGraph.cameraPosition(state->scanId,state->location->ix));
+            } else {
+                Model = glm::translate(glm::mat4(1.0f), -navGraph.cameraPosition(state->scanId,state->location->ix));
+            }
             RotateX = glm::rotate(glm::mat4(1.0f), -(float)M_PI / 2.0f - (float)state->elevation, glm::vec3(1.0f, 0.0f, 0.0f));
             // Rotate camera for heading, positive heading will turn right.
             View = glm::rotate(RotateX, (float)state->heading, glm::vec3(0.0f, 0.0f, 1.0f));
