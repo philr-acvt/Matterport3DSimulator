@@ -176,7 +176,13 @@ namespace mattersim {
         void setDepthEnabled(bool value);
 
         /**
-         * Enable or disable rendering of object segmentation images. Default is false (disabled).
+         * Enable or disable rendering of object segmentation images using skyboxes. Default is false (disabled).
+         */
+        void setSegmentationEnabled(bool value);
+
+        /**
+         * Enable or disable rendering of object segmentation images using mesh. Default is false (disabled).
+         * Will be ignored if segmentation rendering from skyboxes is enabled.
          */
         void setObjectsEnabled(bool value);
 
@@ -279,6 +285,7 @@ namespace mattersim {
         bool restrictedNavigation;
         bool preloadImages;
         bool renderDepth;
+        bool renderSegmentation;
         bool renderObjects;
         bool skyboxOffset;
         int width;

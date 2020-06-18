@@ -19,7 +19,7 @@ sim = MatterSim.Simulator()
 sim.setCameraResolution(WIDTH, HEIGHT)
 sim.setCameraVFOV(VFOV)
 sim.setDepthEnabled(False) # Turn on depth only after running ./scripts/depth_to_skybox.py (see README.md)
-sim.setObjectsEnabled(True)
+sim.setSegmentationEnabled(True) # Turn on segmentation only after running ./scripts/make_segmentation_skyboxes.py
 sim.initialize()
 #sim.newEpisode(['2t7WUuJeko7'], ['1e6b606b44df4a6086c0f97e826d4d15'], [0], [0])
 #sim.newEpisode(['1LXtFkjw3qL'], ['0b22fa63d0f54a529c525afbf2e8bb25'], [0], [0])

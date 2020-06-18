@@ -13,8 +13,8 @@ namespace mattersim {
 
 
 NavGraph::Location::Location(const Json::Value& viewpoint, const std::string& skyboxDir, 
-        bool preload, bool depth): skyboxDir(skyboxDir), im_loaded(false), 
-                                   includeDepth(depth), cubemap_texture(0), depth_texture(0) {
+        bool preload, bool depth, bool segmentation): skyboxDir(skyboxDir), im_loaded(false),
+                                   includeDepth(depth), includeSegmentation(segmentation), cubemap_texture(0), depth_texture(0), segmentation_texture(0) {
 
     viewpointId = viewpoint["image_id"].asString();
     included = viewpoint["included"].asBool();
@@ -69,6 +69,20 @@ void NavGraph::Location::loadCubemapImages() {
             throw std::invalid_argument( "MatterSim: Could not open skybox depth files at: " + skyboxDir + viewpointId + "_skybox_depth_small.png");
         }
     }
+    if (includeSegmentation) {
+        cv::Mat segmentation = cv::imread(skyboxDir + viewpointId + "_skybox_segmentation_small.png");
+        w = segmentation.cols/6;
+        h = segmentation.rows;
+        xposS = segmentation(cv::Rect(2*w, 0, w, h));
+        xnegS = segmentation(cv::Rect(4*w, 0, w, h));
+        yposS = segmentation(cv::Rect(0*w, 0, w, h));
+        ynegS = segmentation(cv::Rect(5*w, 0, w, h));
+        zposS = segmentation(cv::Rect(1*w, 0, w, h));
+        znegS = segmentation(cv::Rect(3*w, 0, w, h));
+        if (xposS.empty() || xnegS.empty() || yposS.empty() || ynegS.empty() || zposS.empty() || znegS.empty()) {
+            throw std::invalid_argument( "MatterSim: Could not open skybox segmentation files at: " + skyboxDir + viewpointId + "_skybox_segmentation_small.png");
+        }
+    }
     im_loaded = true;
 }
 
@@ -118,6 +132,29 @@ void NavGraph::Location::loadCubemapTextures() {
         glTexImage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, GL_RED, znegD.rows, znegD.cols, 0, GL_RED, GL_UNSIGNED_SHORT, znegD.ptr());
         assertOpenGLError("Depth texture");
     }
+    if (includeSegmentation) {
+        // Segmentation Texture
+        glActiveTexture(GL_TEXTURE0);
+        glEnable(GL_TEXTURE_CUBE_MAP);
+        glGenTextures(1, &segmentation_texture);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, segmentation_texture);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        //use fast 4-byte alignment (default anyway) if possible
+        glPixelStorei(GL_UNPACK_ALIGNMENT, (xnegS.step & 3) ? 1 : 4);
+        //set length of one complete row in data (doesn't need to equal image.cols)
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, xnegS.step/xnegS.elemSize());
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X, 0, GL_RGB, xposS.rows, xposS.cols, 0, GL_BGR, GL_UNSIGNED_BYTE, xposS.ptr());
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_X, 0, GL_RGB, xnegS.rows, xnegS.cols, 0, GL_BGR, GL_UNSIGNED_BYTE, xnegS.ptr());
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_Y, 0, GL_RGB, yposS.rows, yposS.cols, 0, GL_BGR, GL_UNSIGNED_BYTE, yposS.ptr());
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, GL_RGB, ynegS.rows, ynegS.cols, 0, GL_BGR, GL_UNSIGNED_BYTE, ynegS.ptr());
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_Z, 0, GL_RGB, zposS.rows, zposS.cols, 0, GL_BGR, GL_UNSIGNED_BYTE, zposS.ptr());
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, GL_RGB, znegS.rows, znegS.cols, 0, GL_BGR, GL_UNSIGNED_BYTE, znegS.ptr());
+        assertOpenGLError("Segmentation texture");
+    }
 }
 
 
@@ -125,8 +162,10 @@ void NavGraph::Location::deleteCubemapTextures() {
     // no need to check existence, silently ignores errors
     glDeleteTextures(1, &cubemap_texture);
     glDeleteTextures(1, &depth_texture);
+    glDeleteTextures(1, &segmentation_texture);
     cubemap_texture = 0;
     depth_texture = 0;
+    segmentation_texture = 0;
 }
 
 
@@ -142,8 +181,12 @@ std::pair<GLuint, GLuint> NavGraph::Location::cubemapTextures() {
 }
 
 
+GLuint NavGraph::Location::segmentationTexture() {
+    return segmentation_texture;
+}
+
 NavGraph::NavGraph(const std::string& navGraphPath, const std::string& datasetPath, 
-              bool preloadImages, bool renderDepth, int randomSeed, unsigned int cacheSize) : cache(cacheSize) {
+              bool preloadImages, bool renderDepth, bool renderSegmentation, int randomSeed, unsigned int cacheSize) : cache(cacheSize) {
 
     generator.seed(randomSeed);
 
@@ -176,7 +219,7 @@ NavGraph::NavGraph(const std::string& navGraphPath, const std::string& datasetPa
                     std::vector<LocationPtr> > (scanId, std::vector<LocationPtr>()));
         }
         for (auto viewpoint : root) {
-            Location l(viewpoint, skyboxDir, preloadImages, renderDepth);
+            Location l(viewpoint, skyboxDir, preloadImages, renderDepth, renderSegmentation);
             #pragma omp critical
             {
                 scanLocations[scanId].push_back(std::make_shared<Location>(l));
@@ -197,9 +240,9 @@ NavGraph::~NavGraph() {
 
 
 NavGraph& NavGraph::getInstance(const std::string& navGraphPath, const std::string& datasetPath, 
-                bool preloadImages, bool renderDepth, int randomSeed, unsigned int cacheSize){
+                bool preloadImages, bool renderDepth, bool renderSegmentation, int randomSeed, unsigned int cacheSize){
     // magic static
-    static NavGraph instance(navGraphPath, datasetPath, preloadImages, renderDepth, randomSeed, cacheSize);
+    static NavGraph instance(navGraphPath, datasetPath, preloadImages, renderDepth, renderSegmentation, randomSeed, cacheSize);
     return instance;
 }
 
@@ -274,6 +317,12 @@ std::pair<GLuint, GLuint> NavGraph::cubemapTextures(const std::string& scanId, u
     std::pair<GLuint, GLuint> textures = loc->cubemapTextures();
     cache.add(loc);
     return textures;
+}
+
+
+GLuint NavGraph::segmentationTexture(const std::string& scanId, unsigned int ix) {
+    LocationPtr loc = scanLocations.at(scanId).at(ix);
+    return loc->segmentationTexture();
 }
 
 

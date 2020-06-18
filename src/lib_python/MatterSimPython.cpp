@@ -80,6 +80,7 @@ PYBIND11_MODULE(MatterSim, m) {
         .def("setRestrictedNavigation", &Simulator::setRestrictedNavigation)
         .def("setPreloadingEnabled", &Simulator::setPreloadingEnabled)
         .def("setDepthEnabled", &Simulator::setDepthEnabled)
+        .def("setSegmentationEnabled", &Simulator::setSegmentationEnabled)
         .def("setObjectsEnabled", &Simulator::setObjectsEnabled)
         .def("setSkyboxOffsetEnabled", &Simulator::setSkyboxOffsetEnabled)
         .def("setBatchSize", &Simulator::setBatchSize)

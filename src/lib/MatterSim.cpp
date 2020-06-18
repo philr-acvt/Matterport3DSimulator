@@ -142,6 +142,12 @@ void Simulator::setDepthEnabled(bool value) {
     } 
 }
 
+void Simulator::setSegmentationEnabled(bool value) {
+     if (!initialized) {
+        renderSegmentation = value;
+    }
+}
+
 void Simulator::setObjectsEnabled(bool value) {
     if (!initialized) {
         renderObjects = value;
@@ -177,7 +183,7 @@ void Simulator::initialize() {
         states.push_back(std::make_shared<SimState>());
         states.back()->rgb = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
         states.back()->depth = cv::Mat(height, width, CV_16UC1, cv::Scalar(0));
-        if (renderObjects) {
+        if (renderSegmentation || renderObjects) {
             states.back()->object_segmentation = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
         }
     }
@@ -364,7 +370,7 @@ void Simulator::initialize() {
             // trigger loading from disk now, to get predictable timing later
             preloadTimer.Start();
             auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, 
-                              renderDepth, randomSeed, cacheSize);
+                              renderDepth, renderSegmentation, randomSeed, cacheSize);
             preloadTimer.Stop();
         }
 
@@ -381,7 +387,7 @@ void Simulator::populateNavigable() {
         glm::vec3 camera_horizon_dir(cos(adjustedheading), sin(adjustedheading), 0.f);
         double cos_half_hfov = cos(vfov * width / height / 2.0);
         
-        auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, randomSeed, cacheSize);
+        auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, renderSegmentation, randomSeed, cacheSize);
         for (unsigned int i : navGraph.adjacentViewpointIndices(state->scanId, idx)) {
             // Check if visible between camera left and camera right
             glm::vec3 target_dir = navGraph.cameraPosition(state->scanId,i) - navGraph.cameraPosition(state->scanId,idx);
@@ -448,7 +454,7 @@ void Simulator::newEpisode(const std::vector<std::string>& scanId,
         initialize();
     }
     setHeadingElevation(heading, elevation);
-    auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, randomSeed, cacheSize);
+    auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, renderSegmentation, randomSeed, cacheSize);
     for (unsigned int i=0; i<states.size(); ++i) {
         auto state = states.at(i);
         state->step = 0;
@@ -542,7 +548,7 @@ void Simulator::newRandomEpisode(const std::vector<std::string>& scanId) {
     std::vector<double> elevation(scanId.size(), 0.0);
     std::default_random_engine generator;
     std::uniform_real_distribution<double> distribution(0.0,M_PI*2.0);
-    auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, randomSeed, cacheSize);
+    auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, renderSegmentation, randomSeed, cacheSize);
     for (auto scan : scanId) {
         viewpointId.push_back(navGraph.randomViewpoint(scan));
         heading.push_back(distribution(generator));
@@ -557,7 +563,7 @@ const std::vector<SimStatePtr>& Simulator::getState() {
 void Simulator::renderScene() {
     frames += batchSize;
     loadTimer.Start();
-    auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, randomSeed, cacheSize);
+    auto& navGraph = NavGraph::getInstance(navGraphPath, datasetPath, preloadImages, renderDepth, renderSegmentation, randomSeed, cacheSize);
     loadTimer.Stop();
     for (auto state : states) {
         renderTimer.Start();
@@ -611,7 +617,24 @@ void Simulator::renderScene() {
             assertOpenGLError("render Depth");
         }
 
-        if (renderObjects) {
+        if (renderSegmentation) {
+            renderTimer.Start();
+            glUniform1i(isDepth, false);
+            glUniform1i(isObjects, false);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, navGraph.segmentationTexture(state->scanId, state->location->ix));
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            renderTimer.Stop();
+            gpuReadTimer.Start();
+            cv::Mat img = state->object_segmentation;
+            //use fast 4-byte alignment (default anyway) if possible
+            glPixelStorei(GL_PACK_ALIGNMENT, (img.step & 3) ? 1 : 4);
+            //set length of one complete row in destination data (doesn't need to equal img.cols)
+            glPixelStorei(GL_PACK_ROW_LENGTH, img.step/img.elemSize());
+            glReadPixels(0, 0, img.cols, img.rows, GL_BGR, GL_UNSIGNED_BYTE, img.data);
+            gpuReadTimer.Stop();
+            assertOpenGLError("render Segmentation");
+        } else if (renderObjects) {
             renderTimer.Start();
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glUniform1i(isObjects, true);
